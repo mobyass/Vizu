@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Vizu</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <section class="canvas-wrap" aria-label="Zone de création">
+        <div id="visualCanvas" class="visual-canvas" data-export-name="visuel">
+          <p class="canvas-item text-item" data-type="text" contenteditable="true" style="left: 50%; top: 50%; width: 54%; height: auto; font-size: 32px;">
+            TEXTE 1
+          </p>
+        </div>
+      </section>
+
+      <aside class="side-panel" aria-label="Outils et réglages">
+        <section class="toolbar" aria-label="Outils">
+          <button id="addModelButton" type="button">Ajouter un modele</button>
+          <button id="addTextButton" type="button">Ajouter un texte</button>
+          <button id="addImageButton" type="button">Ajouter une image</button>
+          <button id="fillImageButton" type="button">Mettre une image</button>
+          <button id="addShapeButton" type="button">Ajouter une forme</button>
+          <button id="deleteButton" type="button">Supprimer</button>
+          <button id="downloadButton" type="button">Télécharger</button>
+          <input id="modelInput" type="file" accept="image/*" hidden />
+          <input id="imageFillInput" type="file" accept="image/*" hidden />
+        </section>
+
+        <section class="controls" aria-label="Réglages de l'élément sélectionné">
+          <div class="setting">
+            <span>Largeur</span>
+            <input id="widthControl" type="range" min="1" max="100" step="0.1" value="50" />
+            <div class="stepper" data-unit="%">
+              <button type="button" data-step-for="widthControl" data-step="-1">-</button>
+              <input id="widthValue" class="number-value" type="text" inputmode="decimal" value="50" aria-label="Valeur largeur" />
+              <button type="button" data-step-for="widthControl" data-step="1">+</button>
+            </div>
+          </div>
+          <div class="setting">
+            <span>Hauteur</span>
+            <input id="heightControl" type="range" min="1" max="100" step="0.1" value="20" />
+            <div class="stepper" data-unit="%">
+              <button type="button" data-step-for="heightControl" data-step="-1">-</button>
+              <input id="heightValue" class="number-value" type="text" inputmode="decimal" value="20" aria-label="Valeur hauteur" />
+              <button type="button" data-step-for="heightControl" data-step="1">+</button>
+            </div>
+          </div>
+          <div class="setting">
+            <span>Taille texte</span>
+            <input id="fontSizeControl" type="range" min="8" max="120" step="0.1" value="32" />
+            <div class="stepper" data-unit="px">
+              <button type="button" data-step-for="fontSizeControl" data-step="-1">-</button>
+              <input id="fontSizeValue" class="number-value" type="text" inputmode="decimal" value="32" aria-label="Valeur taille texte" />
+              <button type="button" data-step-for="fontSizeControl" data-step="1">+</button>
+            </div>
+          </div>
+          <label>
+            Forme
+            <select id="shapeControl">
+              <option value="free">Libre</option>
+              <option value="square">Carre</option>
+              <option value="rectangle">Rectangle</option>
+              <option value="circle">Rond</option>
+            </select>
+          </label>
+          <label>
+            Couleur forme
+            <input id="colorControl" type="color" value="#ffffff" />
+          </label>
+          <label>
+            Opacite
+            <input id="opacityControl" type="range" min="0" max="100" value="100" />
+          </label>
+          <label>
+            Zoom image
+            <input id="modelZoomControl" type="range" min="100" max="300" step="1" value="100" />
+          </label>
+          <label>
+            Image X
+            <input id="modelXControl" type="range" min="0" max="100" step="0.1" value="50" />
+          </label>
+          <label>
+            Image Y
+            <input id="modelYControl" type="range" min="0" max="100" step="0.1" value="50" />
+          </label>
+        </section>
+      </aside>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
