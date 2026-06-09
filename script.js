@@ -1,13 +1,24 @@
 const canvas = document.querySelector("#visualCanvas");
-const addModelButton = document.querySelector("#addModelButton");
 const addTextButton = document.querySelector("#addTextButton");
 const addImageButton = document.querySelector("#addImageButton");
 const fillImageButton = document.querySelector("#fillImageButton");
+const clearImageButton = document.querySelector("#clearImageButton");
 const addShapeButton = document.querySelector("#addShapeButton");
 const deleteButton = document.querySelector("#deleteButton");
 const downloadButton = document.querySelector("#downloadButton");
 const modelInput = document.querySelector("#modelInput");
 const imageFillInput = document.querySelector("#imageFillInput");
+const imageImportList = document.querySelector("#imageImportList");
+const textEditList = document.querySelector("#textEditList");
+const btnRecadrer = document.querySelector("#btnRecadrer");
+const btnClearModel = document.querySelector("#btnClearModel");
+const btnExport = document.querySelector("#btnExport");
+const btnShare = document.querySelector("#btnShare");
+const recadrageModal = document.querySelector("#recadrageModal");
+const recadragePreview = document.querySelector("#recadragePreview");
+const recadrageZoomSlider = document.querySelector("#recadrageZoomSlider");
+const btnAnnulerRecadrage = document.querySelector("#btnAnnulerRecadrage");
+const btnValiderRecadrage = document.querySelector("#btnValiderRecadrage");
 const widthControl = document.querySelector("#widthControl");
 const heightControl = document.querySelector("#heightControl");
 const fontSizeControl = document.querySelector("#fontSizeControl");
@@ -26,6 +37,10 @@ let selectedItem = canvas.querySelector(".canvas-item");
 let textCount = canvas.querySelectorAll(".text-item").length;
 let imageCount = canvas.querySelectorAll(".image-item").length;
 let shapeCount = canvas.querySelectorAll(".shape-item").length;
+let imageImportCount = 0;
+let textEditCount = 0;
+let recadrageDrag = null;
+let cropTarget = null;
 
 const controls = [
   widthControl,
@@ -120,6 +135,182 @@ function imageLabel(index) {
   return `Image ${label}`;
 }
 
+function updateTextSectionVisibility() {
+  const section = textEditList.closest(".editor-section");
+  if (section) section.style.display = textEditList.querySelector(".text-edit-row") ? "" : "none";
+}
+
+function updateImageSectionVisibility() {
+  const section = imageImportList.closest(".editor-section");
+  if (!section) return;
+  const hasVisible = [...imageImportList.querySelectorAll(".image-import-row")].some(r => r.style.display !== "none");
+  section.style.display = hasVisible ? "" : "none";
+}
+
+function renderEmptyImageImports() {
+  if (imageImportList.children.length) return;
+
+  const empty = document.createElement("p");
+  empty.className = "image-import-empty";
+  empty.textContent = "Ajoute une image pour afficher son import ici.";
+  imageImportList.appendChild(empty);
+  updateImageSectionVisibility();
+}
+
+function renderEmptyTextEdits() {
+  if (textEditList.children.length) return;
+
+  const empty = document.createElement("p");
+  empty.className = "text-edit-empty";
+  empty.textContent = "Ajoute un texte pour le modifier ici.";
+  textEditList.appendChild(empty);
+  updateTextSectionVisibility();
+}
+
+function createTextEditControl(item) {
+  if (!item) return;
+
+  textEditList.querySelector(".text-edit-empty")?.remove();
+
+  textEditCount += 1;
+  const textId = `text-${textEditCount}`;
+  item.dataset.textId = textId;
+
+  const row = document.createElement("div");
+  row.className = "text-edit-row";
+  row.dataset.textId = textId;
+
+  const fieldLabel = document.createElement("label");
+  fieldLabel.textContent = item.textContent.trim();
+
+  const textarea = document.createElement("textarea");
+  textarea.placeholder = "Votre texte ici...";
+  textarea.value = item.textContent.trim();
+  textarea.addEventListener("input", () => {
+    item.textContent = textarea.value || " ";
+  });
+
+  fieldLabel.appendChild(textarea);
+  row.appendChild(fieldLabel);
+  textEditList.appendChild(row);
+  updateTextSectionVisibility();
+}
+
+function removeTextEditControl(item) {
+  const textId = item?.dataset.textId;
+  if (!textId) return;
+
+  textEditList.querySelector(`[data-text-id="${textId}"]`)?.remove();
+  renderEmptyTextEdits();
+}
+
+function syncTextEditControl(item) {
+  const textId = item?.dataset.textId;
+  if (!textId) return;
+
+  const textarea = textEditList.querySelector(`[data-text-id="${textId}"] textarea`);
+  if (textarea && textarea !== document.activeElement) {
+    textarea.value = item.textContent.trim();
+  }
+}
+
+function createImageImportControl(item, label) {
+  imageImportList.querySelector(".image-import-empty")?.remove();
+
+  imageImportCount += 1;
+  const imageId = `image-${imageImportCount}`;
+  item.dataset.imageId = imageId;
+
+  const row = document.createElement("div");
+  row.className = "image-import-row";
+  row.dataset.imageId = imageId;
+  row.dataset.imageLabel = label;
+
+  const fieldLabel = document.createElement("label");
+  fieldLabel.textContent = `Importer une ${label}`;
+
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file) return;
+    readImageFillFile(file, item);
+    input.value = "";
+  });
+
+  const btnCrop = document.createElement("button");
+  btnCrop.type = "button";
+  btnCrop.textContent = "Recadrer";
+  btnCrop.className = "btn-recadrer-image";
+  btnCrop.disabled = true;
+  btnCrop.addEventListener("click", () => openImageCropModal(item));
+
+  const inputRow = document.createElement("div");
+  inputRow.style.cssText = "display:flex;gap:8px;align-items:center;";
+  inputRow.appendChild(input);
+  inputRow.appendChild(btnCrop);
+
+  fieldLabel.appendChild(inputRow);
+  row.appendChild(fieldLabel);
+  imageImportList.appendChild(row);
+  updateImageSectionVisibility();
+}
+
+function disableImageImportControl(item) {
+  const imageId = item?.dataset.imageId;
+  if (!imageId) return;
+
+  const row = imageImportList.querySelector(`[data-image-id="${imageId}"]`);
+  if (!row) return;
+
+  const input = row.querySelector("input");
+  const label = row.querySelector("label");
+
+  row.style.display = "none";
+  updateImageSectionVisibility();
+}
+
+function enableImageImportControl(item) {
+  const imageId = item?.dataset.imageId;
+  if (!imageId) return;
+  const row = imageImportList.querySelector(`[data-image-id="${imageId}"]`);
+  if (!row) return;
+  const input = row.querySelector("input[type='file']");
+  const cropBtn = row.querySelector(".btn-recadrer-image");
+  row.style.display = "";
+  if (input) input.disabled = false;
+  if (cropBtn) cropBtn.disabled = true;
+  updateImageSectionVisibility();
+}
+
+function clearImageContent() {
+  if (!selectedItem?.classList.contains("image-item")) return;
+  const item = selectedItem;
+  item.classList.remove("has-image");
+  item.style.backgroundImage = "";
+  item.style.backgroundSize = "";
+  item.style.backgroundPosition = "";
+  item.style.backgroundRepeat = "";
+  delete item.dataset.imageEmbedded;
+  delete item.dataset.imageSource;
+  delete item.dataset.imageZoom;
+  delete item.dataset.imageX;
+  delete item.dataset.imageY;
+  delete item.dataset.imageRatio;
+  enableImageImportControl(item);
+  clearImageButton.disabled = true;
+  fillImageButton.disabled = false;
+}
+
+function removeImageImportControl(item) {
+  const imageId = item?.dataset.imageId;
+  if (!imageId) return;
+
+  imageImportList.querySelector(`[data-image-id="${imageId}"]`)?.remove();
+  renderEmptyImageImports();
+}
+
 function selectItem(item) {
   if (selectedItem) selectedItem.classList.remove("is-selected");
   selectedItem = item;
@@ -130,6 +321,7 @@ function selectItem(item) {
     });
     deleteButton.disabled = true;
     fillImageButton.disabled = true;
+    clearImageButton.disabled = true;
     return;
   }
 
@@ -141,6 +333,7 @@ function selectItem(item) {
   });
   deleteButton.disabled = false;
   fillImageButton.disabled = !selectedItem.classList.contains("image-item");
+  clearImageButton.disabled = !selectedItem.classList.contains("has-image");
 
   setControlValue(widthControl, isModel ? 100 : percentFromStyle(selectedItem, "width", 50));
   setControlValue(heightControl, isModel ? 100 : selectedItem.style.height === "auto" ? 20 : percentFromStyle(selectedItem, "height", 20));
@@ -176,24 +369,27 @@ function createTextItem() {
   item.style.fontSize = "32px";
   item.style.opacity = "1";
   canvas.appendChild(item);
+  createTextEditControl(item);
   selectItem(item);
   item.focus();
 }
 
 function createImageItem() {
   imageCount += 1;
+  const label = imageLabel(imageCount);
 
   const item = document.createElement("div");
   item.className = "canvas-item image-item";
   item.dataset.type = "image-placeholder";
   item.dataset.shape = "rectangle";
-  item.textContent = imageLabel(imageCount);
+  item.textContent = label;
   item.style.left = "50%";
   item.style.top = "50%";
   item.style.width = "48%";
   item.style.height = "30%";
   item.style.opacity = "1";
   canvas.appendChild(item);
+  createImageImportControl(item, label);
   selectItem(item);
 }
 
@@ -220,7 +416,7 @@ function applyModelPosition(item) {
   const x = Number(item.dataset.modelX || 50);
   const y = Number(item.dataset.modelY || 50);
   const imageRatio = Number(item.dataset.imageRatio || 0);
-  const canvasRatio = 4 / 5;
+  const canvasRatio = item.dataset.containerRatio ? Number(item.dataset.containerRatio) : 4 / 5;
 
   if (!imageRatio) {
     item.style.backgroundSize = "cover";
@@ -275,6 +471,8 @@ function createModelLayer(src) {
   applyModelPosition(item);
   canvas.prepend(item);
   selectItem(item);
+  btnRecadrer.disabled = false;
+  btnClearModel.disabled = false;
 
   const image = new Image();
   image.addEventListener("load", () => {
@@ -282,6 +480,85 @@ function createModelLayer(src) {
     applyModelPosition(item);
   });
   image.src = src;
+}
+
+function getModelLayer() {
+  return canvas.querySelector(".model-layer");
+}
+
+function syncCropPreviewFromModel() {
+  const model = getModelLayer();
+  if (!model) return;
+
+  recadragePreview.dataset.zoom = model.dataset.zoom || "100";
+  recadragePreview.dataset.modelX = model.dataset.modelX || "50";
+  recadragePreview.dataset.modelY = model.dataset.modelY || "50";
+  recadragePreview.dataset.imageRatio = model.dataset.imageRatio || "";
+  recadragePreview.style.backgroundImage = model.style.backgroundImage;
+  recadrageZoomSlider.value = recadragePreview.dataset.zoom;
+  applyModelPosition(recadragePreview);
+}
+
+function openRecadrage() {
+  if (!getModelLayer()) return;
+  cropTarget = "model";
+  syncCropPreviewFromModel();
+  recadrageModal.classList.add("active");
+}
+
+function openImageCropModal(imageItem) {
+  if (!imageItem?.dataset.imageEmbedded) return;
+  cropTarget = imageItem;
+  const itemRect = imageItem.getBoundingClientRect();
+  const itemRatio = itemRect.width && itemRect.height ? itemRect.width / itemRect.height : 4 / 5;
+  recadragePreview.dataset.zoom = imageItem.dataset.imageZoom || "100";
+  recadragePreview.dataset.modelX = imageItem.dataset.imageX || "50";
+  recadragePreview.dataset.modelY = imageItem.dataset.imageY || "50";
+  recadragePreview.dataset.imageRatio = imageItem.dataset.imageRatio || "";
+  recadragePreview.dataset.containerRatio = itemRatio.toFixed(4);
+  recadragePreview.style.aspectRatio = `${itemRect.width} / ${itemRect.height}`;
+  recadragePreview.style.backgroundImage = imageItem.style.backgroundImage;
+  recadrageZoomSlider.value = recadragePreview.dataset.zoom;
+  applyModelPosition(recadragePreview);
+  recadrageModal.classList.add("active");
+}
+
+function closeRecadrage() {
+  recadrageModal.classList.remove("active");
+  recadragePreview.style.aspectRatio = "";
+  delete recadragePreview.dataset.containerRatio;
+  recadrageDrag = null;
+  cropTarget = null;
+}
+
+function validateRecadrage() {
+  if (cropTarget === "model") {
+    const model = getModelLayer();
+    if (!model) return;
+    model.dataset.zoom = recadragePreview.dataset.zoom || "100";
+    model.dataset.modelX = recadragePreview.dataset.modelX || "50";
+    model.dataset.modelY = recadragePreview.dataset.modelY || "50";
+    applyModelPosition(model);
+    selectItem(model);
+  } else if (cropTarget instanceof HTMLElement) {
+    cropTarget.dataset.imageZoom = recadragePreview.dataset.zoom || "100";
+    cropTarget.dataset.imageX = recadragePreview.dataset.modelX || "50";
+    cropTarget.dataset.imageY = recadragePreview.dataset.modelY || "50";
+    applyEmbeddedImagePosition(cropTarget);
+    selectItem(cropTarget);
+  }
+  closeRecadrage();
+}
+
+function moveCropPreview(event) {
+  if (!recadrageDrag) return;
+
+  const rect = recadragePreview.getBoundingClientRect();
+  const deltaX = ((event.clientX - recadrageDrag.startX) / rect.width) * 100;
+  const deltaY = ((event.clientY - recadrageDrag.startY) / rect.height) * 100;
+  recadragePreview.dataset.modelX = clamp(recadrageDrag.startModelX - deltaX, 0, 100).toFixed(1);
+  recadragePreview.dataset.modelY = clamp(recadrageDrag.startModelY - deltaY, 0, 100).toFixed(1);
+  applyModelPosition(recadragePreview);
 }
 
 function readModelFile(file) {
@@ -295,12 +572,14 @@ function readModelFile(file) {
   reader.readAsDataURL(file);
 }
 
-function fillSelectedImage(src) {
-  if (!selectedItem?.classList.contains("image-item")) return;
+function fillImageItem(item, src, source = "right") {
+  if (!item?.classList.contains("image-item")) return;
 
-  const imageItem = selectedItem;
+  const imageItem = item;
   imageItem.classList.add("has-image");
+  if (imageItem === selectedItem) clearImageButton.disabled = false;
   imageItem.dataset.imageEmbedded = "true";
+  imageItem.dataset.imageSource = source;
   imageItem.dataset.imageZoom = "100";
   imageItem.dataset.imageX = "50";
   imageItem.dataset.imageY = "50";
@@ -313,15 +592,25 @@ function fillSelectedImage(src) {
     imageItem.dataset.imageRatio = `${image.naturalWidth / image.naturalHeight}`;
     applyEmbeddedImagePosition(imageItem);
     selectItem(imageItem);
+    const imageId = imageItem.dataset.imageId;
+    if (imageId) {
+      const btn = imageImportList.querySelector(`[data-image-id="${imageId}"] .btn-recadrer-image`);
+      if (btn) btn.disabled = false;
+    }
   });
   image.src = src;
 }
 
-function readImageFillFile(file) {
+function fillSelectedImage(src) {
+  fillImageItem(selectedItem, src);
+}
+
+function readImageFillFile(file, targetItem = selectedItem, source = "right") {
   const reader = new FileReader();
 
   reader.addEventListener("load", () => {
-    fillSelectedImage(reader.result);
+    fillImageItem(targetItem, reader.result, source);
+    if (source === "left") disableImageImportControl(targetItem);
     imageFillInput.value = "";
   });
 
@@ -439,9 +728,366 @@ function getCanvasCode() {
     .join("\n      ");
 }
 
-function buildExportHtml(data) {
-  const body = getCanvasCode();
-  const metadata = JSON.stringify(data, null, 2).replaceAll("</script", "<\\/script");
+function dataUrlInfo(dataUrl) {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.*)$/);
+  if (!match) return null;
+
+  const extensionByType = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/svg+xml": "svg",
+  };
+
+  return {
+    mime: match[1],
+    base64: match[2],
+    extension: extensionByType[match[1]] || "png",
+  };
+}
+
+function getBackgroundDataUrl(item) {
+  const value = item.style.backgroundImage;
+  const match = value.match(/^url\(["']?(.*?)["']?\)$/);
+  return match ? match[1] : "";
+}
+
+function buildAssetMap() {
+  const assets = [];
+  const model = canvas.querySelector(".model-layer");
+  const modelDataUrl = model ? getBackgroundDataUrl(model) : "";
+  const modelInfo = modelDataUrl ? dataUrlInfo(modelDataUrl) : null;
+
+  if (model && modelInfo) {
+    assets.push({
+      item: model,
+      kind: "model",
+      dataUrl: modelDataUrl,
+      base64: modelInfo.base64,
+      filename: `images/modele.${modelInfo.extension}`,
+    });
+  }
+
+  canvas.querySelectorAll(".image-item[data-image-source='left']").forEach((item, index) => {
+    const dataUrl = getBackgroundDataUrl(item);
+    const info = dataUrlInfo(dataUrl);
+    if (!info) return;
+
+    const filename = `images/image-${index + 1}.${info.extension}`;
+    assets.push({
+      item,
+      kind: "image",
+      dataUrl,
+      base64: info.base64,
+      filename,
+    });
+  });
+
+  return assets;
+}
+
+function replaceAssetReferences(root, assets) {
+  assets.forEach((asset) => {
+    if (asset.kind === "model") {
+      const clone = root.querySelector(".model-layer");
+      if (!clone) return;
+
+      clone.style.backgroundImage = `url("${asset.filename}")`;
+      clone.dataset.imageFile = asset.filename;
+      return;
+    }
+
+    const imageId = asset.item.dataset.imageId;
+    if (!imageId) return;
+
+    const clone = root.querySelector(`.image-item[data-image-id="${imageId}"]`);
+    if (!clone) return;
+
+    clone.style.backgroundImage = `url("${asset.filename}")`;
+    clone.dataset.imageFile = asset.filename;
+    delete clone.dataset.imageEmbedded;
+  });
+}
+
+function getWorkspaceCode(assets = []) {
+  const workspace = document.querySelector(".workspace").cloneNode(true);
+
+  workspace.querySelectorAll(".is-selected").forEach((item) => {
+    item.classList.remove("is-selected");
+  });
+
+  workspace.querySelectorAll("[contenteditable]").forEach((item) => {
+    item.removeAttribute("contenteditable");
+  });
+
+  workspace.querySelectorAll("textarea").forEach((textarea) => {
+    textarea.textContent = textarea.value;
+  });
+
+  workspace.querySelectorAll("input").forEach((input) => {
+    if (input.type !== "file") {
+      input.setAttribute("value", input.value);
+    }
+  });
+
+  replaceAssetReferences(workspace, assets);
+
+  return workspace.outerHTML;
+}
+
+function getStandalonePageScript() {
+  return `
+document.querySelectorAll(".text-edit-row").forEach((row) => {
+  const textarea = row.querySelector("textarea");
+  const textId = row.dataset.textId;
+  const target = document.querySelector(".text-item[data-text-id='" + textId + "']");
+  if (!textarea || !target) return;
+  textarea.addEventListener("input", () => {
+    target.textContent = textarea.value || " ";
+  });
+});
+
+document.querySelectorAll(".image-import-row").forEach((row) => {
+  const input = row.querySelector("input[type='file']");
+  const imageId = row.dataset.imageId;
+  const target = document.querySelector(".image-item[data-image-id='" + imageId + "']");
+  if (!input || !target || input.disabled) return;
+  input.addEventListener("change", () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      target.classList.add("has-image");
+      target.dataset.imageEmbedded = "true";
+      target.dataset.imageZoom = "100";
+      target.dataset.imageX = "50";
+      target.dataset.imageY = "50";
+      target.style.backgroundImage = "url('" + reader.result + "')";
+      target.style.backgroundSize = "cover";
+      target.style.backgroundPosition = "50% 50%";
+      target.style.backgroundRepeat = "no-repeat";
+      const cropBtn = row.querySelector(".btn-recadrer-image");
+      const img = new Image();
+      img.addEventListener("load", () => {
+        target.dataset.imageRatio = (img.naturalWidth / img.naturalHeight).toString();
+        if (cropBtn) cropBtn.disabled = false;
+      });
+      img.src = reader.result;
+      input.value = "";
+    });
+    reader.readAsDataURL(file);
+  });
+});
+
+function getModelLayer() {
+  return document.querySelector(".model-layer");
+}
+
+function applyModelPosition(item) {
+  const zoom = Number(item.dataset.zoom || 100);
+  const x = Number(item.dataset.modelX || 50);
+  const y = Number(item.dataset.modelY || 50);
+  const imageRatio = Number(item.dataset.imageRatio || 0);
+  const canvasRatio = item.dataset.containerRatio ? Number(item.dataset.containerRatio) : 4 / 5;
+  if (!imageRatio) {
+    item.style.backgroundSize = "cover";
+    item.style.backgroundPosition = x + "% " + y + "%";
+    return;
+  }
+  const size = imageRatio > canvasRatio
+    ? { width: (imageRatio / canvasRatio) * zoom, height: zoom }
+    : { width: zoom, height: (canvasRatio / imageRatio) * zoom };
+  item.style.backgroundSize = size.width + "% " + size.height + "%";
+  item.style.backgroundPosition = x + "% " + y + "%";
+}
+
+const visualCanvas = document.querySelector("#visualCanvas");
+const modelInput = document.querySelector("#modelInput");
+const btnRecadrer = document.querySelector("#btnRecadrer");
+const recadrageModal = document.querySelector("#recadrageModal");
+const recadragePreview = document.querySelector("#recadragePreview");
+const recadrageZoomSlider = document.querySelector("#recadrageZoomSlider");
+const btnAnnulerRecadrage = document.querySelector("#btnAnnulerRecadrage");
+const btnValiderRecadrage = document.querySelector("#btnValiderRecadrage");
+let cropDrag = null;
+let cropTarget = null;
+
+function closeCropModal() {
+  recadrageModal?.classList.remove("active");
+  if (recadragePreview) {
+    recadragePreview.style.aspectRatio = "";
+    delete recadragePreview.dataset.containerRatio;
+  }
+  cropDrag = null;
+  cropTarget = null;
+}
+
+function openImageCropModal(imageItem) {
+  if (!imageItem?.style.backgroundImage || imageItem.style.backgroundImage === "none" || !recadrageModal || !recadragePreview) return;
+  cropTarget = imageItem;
+  const rect = imageItem.getBoundingClientRect();
+  const ratio = rect.width && rect.height ? rect.width / rect.height : 1;
+  recadragePreview.dataset.zoom = imageItem.dataset.imageZoom || "100";
+  recadragePreview.dataset.modelX = imageItem.dataset.imageX || "50";
+  recadragePreview.dataset.modelY = imageItem.dataset.imageY || "50";
+  recadragePreview.dataset.imageRatio = imageItem.dataset.imageRatio || "";
+  recadragePreview.dataset.containerRatio = ratio.toFixed(4);
+  recadragePreview.style.aspectRatio = rect.width + " / " + rect.height;
+  recadragePreview.style.backgroundImage = imageItem.style.backgroundImage;
+  if (recadrageZoomSlider) recadrageZoomSlider.value = recadragePreview.dataset.zoom;
+  applyModelPosition(recadragePreview);
+  recadrageModal.classList.add("active");
+}
+
+document.querySelectorAll(".btn-recadrer-image").forEach((btn) => {
+  const row = btn.closest(".image-import-row");
+  if (!row) return;
+  const imageId = row.dataset.imageId;
+  const target = document.querySelector(".image-item[data-image-id='" + imageId + "']");
+  if (!target) return;
+  if (target.style.backgroundImage && target.style.backgroundImage !== "none") btn.disabled = false;
+  btn.addEventListener("click", () => openImageCropModal(target));
+});
+
+modelInput?.addEventListener("change", () => {
+  const file = modelInput.files[0];
+  if (!file || !visualCanvas) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    getModelLayer()?.remove();
+    const layer = document.createElement("div");
+    layer.className = "model-layer";
+    layer.dataset.type = "model";
+    layer.dataset.zoom = "100";
+    layer.dataset.modelX = "50";
+    layer.dataset.modelY = "50";
+    layer.style.backgroundImage = "url('" + reader.result + "')";
+    layer.style.opacity = "1";
+    visualCanvas.prepend(layer);
+    if (btnRecadrer) btnRecadrer.disabled = false;
+    modelInput.value = "";
+    const img = new Image();
+    img.addEventListener("load", () => {
+      layer.dataset.imageRatio = (img.naturalWidth / img.naturalHeight).toString();
+      applyModelPosition(layer);
+    });
+    img.src = reader.result;
+  });
+  reader.readAsDataURL(file);
+});
+
+btnRecadrer?.addEventListener("click", () => {
+  const model = getModelLayer();
+  if (!model || !recadrageModal || !recadragePreview) return;
+  cropTarget = "model";
+  recadragePreview.style.aspectRatio = "";
+  delete recadragePreview.dataset.containerRatio;
+  recadragePreview.dataset.zoom = model.dataset.zoom || "100";
+  recadragePreview.dataset.modelX = model.dataset.modelX || "50";
+  recadragePreview.dataset.modelY = model.dataset.modelY || "50";
+  recadragePreview.dataset.imageRatio = model.dataset.imageRatio || "";
+  recadragePreview.style.backgroundImage = model.style.backgroundImage;
+  if (recadrageZoomSlider) recadrageZoomSlider.value = recadragePreview.dataset.zoom;
+  applyModelPosition(recadragePreview);
+  recadrageModal.classList.add("active");
+});
+
+btnAnnulerRecadrage?.addEventListener("click", () => closeCropModal());
+btnValiderRecadrage?.addEventListener("click", () => {
+  if (!recadragePreview) return;
+  if (cropTarget === "model") {
+    const model = getModelLayer();
+    if (model) {
+      model.dataset.zoom = recadragePreview.dataset.zoom || "100";
+      model.dataset.modelX = recadragePreview.dataset.modelX || "50";
+      model.dataset.modelY = recadragePreview.dataset.modelY || "50";
+      applyModelPosition(model);
+    }
+  } else if (cropTarget instanceof Element) {
+    const zoom = Number(recadragePreview.dataset.zoom || 100);
+    const x = recadragePreview.dataset.modelX || "50";
+    const y = recadragePreview.dataset.modelY || "50";
+    const imageRatio = Number(cropTarget.dataset.imageRatio || 0);
+    const rect = cropTarget.getBoundingClientRect();
+    const itemRatio = rect.width && rect.height ? rect.width / rect.height : 1;
+    cropTarget.dataset.imageZoom = zoom;
+    cropTarget.dataset.imageX = x;
+    cropTarget.dataset.imageY = y;
+    if (!imageRatio) {
+      cropTarget.style.backgroundSize = "cover";
+      cropTarget.style.backgroundPosition = x + "% " + y + "%";
+    } else {
+      const size = imageRatio > itemRatio
+        ? { width: (imageRatio / itemRatio) * zoom, height: zoom }
+        : { width: zoom, height: (itemRatio / imageRatio) * zoom };
+      cropTarget.style.backgroundSize = size.width + "% " + size.height + "%";
+      cropTarget.style.backgroundPosition = x + "% " + y + "%";
+    }
+  }
+  closeCropModal();
+});
+
+recadrageZoomSlider?.addEventListener("input", () => {
+  recadragePreview.dataset.zoom = recadrageZoomSlider.value;
+  applyModelPosition(recadragePreview);
+});
+
+recadragePreview?.addEventListener("pointerdown", (event) => {
+  cropDrag = {
+    x: event.clientX,
+    y: event.clientY,
+    modelX: Number(recadragePreview.dataset.modelX || 50),
+    modelY: Number(recadragePreview.dataset.modelY || 50),
+  };
+  recadragePreview.setPointerCapture(event.pointerId);
+});
+
+recadragePreview?.addEventListener("pointermove", (event) => {
+  if (!cropDrag) return;
+  const rect = recadragePreview.getBoundingClientRect();
+  const nextX = Math.min(100, Math.max(0, cropDrag.modelX - ((event.clientX - cropDrag.x) / rect.width) * 100));
+  const nextY = Math.min(100, Math.max(0, cropDrag.modelY - ((event.clientY - cropDrag.y) / rect.height) * 100));
+  recadragePreview.dataset.modelX = nextX.toFixed(1);
+  recadragePreview.dataset.modelY = nextY.toFixed(1);
+  applyModelPosition(recadragePreview);
+});
+
+recadragePreview?.addEventListener("pointerup", () => {
+  cropDrag = null;
+});
+
+
+async function renderPng() {
+  if (!window.html2canvas || !visualCanvas) return null;
+  return html2canvas(visualCanvas, { scale: 4, backgroundColor: null, useCORS: true });
+}
+
+document.querySelector("#btnExport")?.addEventListener("click", async () => {
+  const rendered = await renderPng();
+  if (!rendered) return;
+  const link = document.createElement("a");
+  link.href = rendered.toDataURL("image/png");
+  link.download = "post.png";
+  link.click();
+});
+
+document.querySelector("#btnShare")?.addEventListener("click", async () => {
+  const rendered = await renderPng();
+  if (!rendered) return;
+  rendered.toBlob(async (blob) => {
+    const file = new File([blob], "post.png", { type: "image/png" });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+    }
+  }, "image/png");
+});
+`;
+}
+
+function buildExportHtml(data, assets = []) {
+  const workspace = getWorkspaceCode(assets);
+  const modal = document.querySelector("#recadrageModal").outerHTML;
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -449,96 +1095,100 @@ function buildExportHtml(data) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${data.name}</title>
-    <style>
-      * { box-sizing: border-box; }
-      body {
-        min-height: 100vh;
-        margin: 0;
-        display: grid;
-        place-items: center;
-        background: #f4f2ee;
-        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-      }
-      .visual-canvas {
-        position: relative;
-        width: min(80vw, 560px);
-        aspect-ratio: 4 / 5;
-        overflow: hidden;
-        background: ${data.background};
-      }
-      .canvas-item {
-        position: absolute;
-        margin: 0;
-        transform: translate(-50%, -50%);
-        z-index: 2;
-      }
-      .model-layer {
-        position: absolute;
-        inset: 0;
-        z-index: 1;
-        background-repeat: no-repeat;
-        background-position: 50% 50%;
-        background-size: cover;
-      }
-      .image-item {
-        display: grid;
-        place-items: center;
-        background: rgba(255, 255, 255, 0.32);
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size: cover;
-        color: #151515;
-        font-size: 28px;
-        font-weight: 800;
-        text-align: center;
-        user-select: none;
-        overflow: hidden;
-      }
-      .image-item.has-image {
-        background-color: transparent;
-        color: transparent;
-      }
-      .shape-item {
-        background: #ffffff;
-      }
-      .shape-item[data-shape="circle"] {
-        border-radius: 999px;
-      }
-      .text-item {
-        min-width: 80px;
-        max-width: 90%;
-        padding: 6px 8px;
-        color: #151515;
-        font-size: 32px;
-        font-weight: 750;
-        line-height: 1.1;
-        text-align: center;
-        overflow-wrap: anywhere;
-      }
-    </style>
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <!-- Code du rectangle gris uniquement -->
-    <div class="visual-canvas">
-      ${body}
-    </div>
-    <script type="application/json" id="visual-data">
-${metadata}
-    <\/script>
+    ${workspace}
+    ${modal}
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"><\/script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"><\/script>
+    <script src="script.js"><\/script>
   </body>
 </html>`;
 }
 
-function downloadCanvasCode() {
-  const data = exportCanvasData();
-  const html = buildExportHtml(data);
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+function downloadBlob(blob, filename) {
   const link = document.createElement("a");
-
   link.href = URL.createObjectURL(blob);
-  link.download = `${data.name}.html`;
+  link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
+}
+
+async function downloadCanvasCode() {
+  if (!window.JSZip) {
+    alert("Le zip n'est pas disponible. Verifie ta connexion puis reessaie.");
+    return;
+  }
+
+  const data = exportCanvasData();
+  const assets = buildAssetMap();
+  const html = buildExportHtml(data, assets);
+  const cssText = await fetch("styles.css").then(r => r.text()).catch(() => "");
+
+  const zip = new JSZip();
+  zip.file("index.html", html);
+  zip.file("styles.css", cssText);
+  zip.file("script.js", getStandalonePageScript());
+
+  assets.forEach((asset) => {
+    zip.file(asset.filename, asset.base64, { base64: true });
+  });
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  downloadBlob(blob, "editeur-visuel.zip");
+}
+
+async function renderVisualPng() {
+  if (!window.html2canvas) {
+    alert("Export indisponible : html2canvas n'est pas charge.");
+    return null;
+  }
+
+  const selected = selectedItem;
+  if (selected) selected.classList.remove("is-selected");
+
+  const renderedCanvas = await html2canvas(canvas, {
+    scale: 4,
+    backgroundColor: null,
+    useCORS: true,
+  });
+
+  if (selected) selected.classList.add("is-selected");
+  return renderedCanvas;
+}
+
+async function exportVisualImage() {
+  const renderedCanvas = await renderVisualPng();
+  if (!renderedCanvas) return;
+
+  const link = document.createElement("a");
+  link.href = renderedCanvas.toDataURL("image/png");
+  link.download = "post.png";
+  link.click();
+}
+
+async function shareVisualImage() {
+  const renderedCanvas = await renderVisualPng();
+  if (!renderedCanvas) return;
+
+  renderedCanvas.toBlob(async (blob) => {
+    if (!blob) return;
+
+    const file = new File([blob], "post.png", { type: "image/png" });
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      alert("Image copiee !");
+      return;
+    }
+
+    alert("Le partage n'est pas disponible sur ce navigateur.");
+  }, "image/png");
 }
 
 canvas.addEventListener("pointerdown", (event) => {
@@ -570,12 +1220,16 @@ canvas.addEventListener("dblclick", (event) => {
   if (item) item.focus();
 });
 
+canvas.addEventListener("input", (event) => {
+  const item = event.target.closest(".text-item");
+  if (item) syncTextEditControl(item);
+});
+
 canvas.addEventListener("click", (event) => {
   const item = event.target.closest(".canvas-item, .model-layer");
   if (item) selectItem(item);
 });
 
-addModelButton.addEventListener("click", () => modelInput.click());
 modelInput.addEventListener("change", () => {
   const file = modelInput.files[0];
   if (file) readModelFile(file);
@@ -584,12 +1238,14 @@ addTextButton.addEventListener("click", () => createTextItem());
 addImageButton.addEventListener("click", () => createImageItem());
 fillImageButton.addEventListener("click", () => {
   if (selectedItem?.classList.contains("image-item")) {
+    disableImageImportControl(selectedItem);
     imageFillInput.click();
   }
 });
+clearImageButton.addEventListener("click", clearImageContent);
 imageFillInput.addEventListener("change", () => {
   const file = imageFillInput.files[0];
-  if (file) readImageFillFile(file);
+  if (file) readImageFillFile(file, selectedItem, "left");
 });
 addShapeButton.addEventListener("click", () => createShapeItem());
 deleteButton.addEventListener("click", () => {
@@ -597,9 +1253,46 @@ deleteButton.addEventListener("click", () => {
 
   const itemToRemove = selectedItem;
   selectItem(null);
+  removeImageImportControl(itemToRemove);
+  removeTextEditControl(itemToRemove);
   itemToRemove.remove();
 });
 downloadButton.addEventListener("click", downloadCanvasCode);
+btnExport.addEventListener("click", exportVisualImage);
+btnShare.addEventListener("click", shareVisualImage);
+
+btnRecadrer.addEventListener("click", openRecadrage);
+btnClearModel.addEventListener("click", () => {
+  const model = getModelLayer();
+  if (!model) return;
+  if (selectedItem === model) selectItem(null);
+  model.remove();
+  btnRecadrer.disabled = true;
+  btnClearModel.disabled = true;
+  modelInput.value = "";
+});
+btnAnnulerRecadrage.addEventListener("click", closeRecadrage);
+btnValiderRecadrage.addEventListener("click", validateRecadrage);
+
+recadrageZoomSlider.addEventListener("input", () => {
+  recadragePreview.dataset.zoom = recadrageZoomSlider.value;
+  applyModelPosition(recadragePreview);
+});
+
+recadragePreview.addEventListener("pointerdown", (event) => {
+  recadrageDrag = {
+    startX: event.clientX,
+    startY: event.clientY,
+    startModelX: Number(recadragePreview.dataset.modelX || 50),
+    startModelY: Number(recadragePreview.dataset.modelY || 50),
+  };
+  recadragePreview.setPointerCapture(event.pointerId);
+});
+
+recadragePreview.addEventListener("pointermove", moveCropPreview);
+recadragePreview.addEventListener("pointerup", () => {
+  recadrageDrag = null;
+});
 
 widthControl.addEventListener("input", () => {
   if (!selectedItem) return;
@@ -736,3 +1429,6 @@ modelYControl.addEventListener("input", () => {
 
 selectItem(selectedItem);
 updateAllValueOutputs();
+renderEmptyImageImports();
+createTextEditControl(canvas.querySelector(".text-item"));
+renderEmptyTextEdits();

@@ -8,24 +8,15 @@
   </head>
   <body>
     <main class="app">
-      <section class="canvas-wrap" aria-label="Zone de création">
-        <div id="visualCanvas" class="visual-canvas" data-export-name="visuel">
-          <p class="canvas-item text-item" data-type="text" contenteditable="true" style="left: 50%; top: 50%; width: 54%; height: auto; font-size: 32px;">
-            TEXTE 1
-          </p>
-        </div>
-      </section>
-
       <aside class="side-panel" aria-label="Outils et réglages">
         <section class="toolbar" aria-label="Outils">
-          <button id="addModelButton" type="button">Ajouter un modele</button>
           <button id="addTextButton" type="button">Ajouter un texte</button>
           <button id="addImageButton" type="button">Ajouter une image</button>
           <button id="fillImageButton" type="button">Mettre une image</button>
+          <button id="clearImageButton" type="button" disabled>Supprimer l'image</button>
           <button id="addShapeButton" type="button">Ajouter une forme</button>
           <button id="deleteButton" type="button">Supprimer</button>
           <button id="downloadButton" type="button">Télécharger</button>
-          <input id="modelInput" type="file" accept="image/*" hidden />
           <input id="imageFillInput" type="file" accept="image/*" hidden />
         </section>
 
@@ -87,9 +78,66 @@
             <input id="modelYControl" type="range" min="0" max="100" step="0.1" value="50" />
           </label>
         </section>
+
       </aside>
+
+      <section class="workspace" aria-label="Zone de création">
+<div class="workspace-layout">
+          <section class="canvas-wrap" aria-label="Visuel">
+            <div id="visualCanvas" class="visual-canvas" data-export-name="visuel"></div>
+          </section>
+
+          <section class="content-editor" aria-label="Éditeur du contenu">
+            <h2>Éditeur</h2>
+            <div class="editor-section">
+              <div class="control-title">Textes</div>
+              <div id="textEditList" class="text-edit-list"></div>
+            </div>
+            <div class="editor-section">
+              <div class="control-title">Images</div>
+              <div id="imageImportList" class="image-import-list"></div>
+            </div>
+            <div class="editor-section">
+              <div class="control-title">Image de fond</div>
+              <input id="modelInput" type="file" accept="image/*" />
+              <div style="display:flex;gap:8px;">
+                <button id="btnRecadrer" type="button" disabled style="flex:1">Recadrer</button>
+                <button id="btnClearModel" type="button" disabled style="flex:1">Supprimer</button>
+              </div>
+              <div class="button-group">
+                <button id="btnExport" class="btn-export" type="button">Exporter</button>
+                <button id="btnShare" class="btn-share" type="button">Partager</button>
+              </div>
+            </div>
+          </section>
+        </div>
+      </section>
     </main>
 
+    <div class="recadrage-modal" id="recadrageModal">
+      <div class="recadrage-container">
+        <div class="recadrage-header">
+          <h2>Recadrer l'image</h2>
+          <p>Glisse l'image pour la placer, puis ajuste le zoom.</p>
+        </div>
+
+        <div class="recadrage-preview" id="recadragePreview"></div>
+
+        <div class="recadrage-controls">
+          <label>
+            Zoom
+            <input id="recadrageZoomSlider" type="range" min="100" max="300" step="1" value="100" />
+          </label>
+          <div class="button-group">
+            <button id="btnAnnulerRecadrage" type="button">Annuler</button>
+            <button id="btnValiderRecadrage" type="button">Valider</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="script.js"></script>
   </body>
 </html>
